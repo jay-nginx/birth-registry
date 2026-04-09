@@ -1,0 +1,13 @@
+bin/
+obj/
+publish/
+*.user
+.vs/
+.vscode/
+.claude/
+local.settings.json
+azure-deploy.params.json
+*.db
+*.db-shm
+*.db-wal
+birthregistry.db

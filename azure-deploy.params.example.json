@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "baseName":           { "value": "birthregistry" },
+    "location":           { "value": "westeurope" },
+    "sqlAdminLogin":      { "value": "brAdmin" },
+    "sqlAdminPassword":   { "value": "<STRONG_PASSWORD>" },
+    "datadogSite":        { "value": "datadoghq.com" }
+  }
+}
