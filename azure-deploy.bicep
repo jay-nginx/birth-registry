@@ -90,7 +90,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'FUNCTIONS_EXTENSION_VERSION',      value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME',         value: 'dotnet-isolated' }
         { name: 'DatabaseProvider',                 value: 'SqlServer' }
-        { name: 'ConnectionStrings__BirthRegistry', value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabase.name};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
+        { name: 'ConnectionStrings__People',        value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabase.name};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
 
         // ── Datadog: core settings ────────────────────────────────────────────
         { name: 'DD_API_KEY',                       value: '<YOUR_DATADOG_API_KEY>' }

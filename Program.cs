@@ -2,25 +2,29 @@ using BirthRegistry.Data;
 using BirthRegistry.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Formatting.Compact;
+using Serilog.Sinks.Datadog.Logs;
 
-// ── Datadog: must be called BEFORE the host is built.
-// This initialises the CLR profiler compatibility layer required for
-// automatic instrumentation in the Azure Functions isolated worker.
-Datadog.Serverless.CompatibilityLayer.Start();
+// Datadog: must be called BEFORE the host is built.
+// Initialises the CLR profiler compatibility layer for auto-instrumentation.
+// Wrapped in try/catch so a missing native profiler never crashes the app.
+try { Datadog.Serverless.CompatibilityLayer.Start(); }
+catch (Exception ex) { Console.WriteLine($"[Datadog] CompatibilityLayer.Start skipped: {ex.Message}"); }
 
 var host = new HostBuilder()
-    .ConfigureFunctionsWebApplication()         // ASP.NET Core integration for isolated worker
+    .ConfigureFunctionsWebApplication()
     .ConfigureServices((ctx, services) =>
     {
         var config = ctx.Configuration;
 
-        // ── Database ──────────────────────────────────────────────────────────
+        // ── Database ─────────────────────────────────────────────────────────
         var provider = config["DatabaseProvider"] ?? "Sqlite";
         var connStr  = config.GetConnectionString("BirthRegistry")
                        ?? "Data Source=birthregistry.db";
@@ -33,16 +37,44 @@ var host = new HostBuilder()
                 opts.UseSqlite(connStr);
         });
 
-        // ── Application services ───────────────────────────────────────────────
+        // ── Application services ──────────────────────────────────────────────
         services.AddScoped<IBirthRegistryService, BirthRegistryService>();
 
-        // ── Logging (Serilog → JSON → stdout, consumed by Datadog log forwarder)
+        // ── Logging: Serilog → Console (stdout) + Datadog HTTP intake ────────
+        // The Datadog.Logs sink sends directly to https://http-intake.logs.datadoghq.com
+        // No agent, no Azure integration, no forwarder required.
+        var ddApiKey = config["DD_API_KEY"] ?? "";
+        var ddService = config["DD_SERVICE"] ?? "ociofunctionone";
+        var ddEnv     = config["DD_ENV"]     ?? "dev";
+        var ddVersion = config["DD_VERSION"] ?? "1.0.11";
+
+        // Url = host only — the sink prepends "https://" and appends "/api/v2/logs" internally
+        var ddConfig  = new DatadogConfiguration
+        {
+            Url    = "http-intake.logs.datadoghq.com",
+            Port   = 443,
+            UseSSL = true,
+            UseTCP = false
+        };
+
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .Enrich.FromLogContext()
-            .Enrich.WithProperty("service", "ociofunctionone")
-            .Enrich.WithProperty("env", config["DD_ENV"] ?? "dev")
-            .WriteTo.Console(new CompactJsonFormatter())   // structured JSON for Datadog
+            .Enrich.WithProperty("service", ddService)
+            .Enrich.WithProperty("env",     ddEnv)
+            .Enrich.WithProperty("version", ddVersion)
+            .Enrich.WithProperty("ddsource", "csharp")
+            // Keep stdout for Azure log stream / local dev
+            .WriteTo.Console(new CompactJsonFormatter())
+            // Send directly to Datadog Logs HTTP intake — no agent needed
+            .WriteTo.DatadogLogs(
+                apiKey:  ddApiKey,
+                service: ddService,
+                source:  "csharp",
+                host:    Environment.MachineName,
+                tags:    new[] { $"env:{ddEnv}", $"version:{ddVersion}" },
+                configuration: ddConfig
+            )
             .CreateLogger();
 
         services.AddLogging(lb =>
@@ -50,19 +82,29 @@ var host = new HostBuilder()
             lb.ClearProviders();
             lb.AddSerilog(Log.Logger, dispose: true);
         });
-
-        // Datadog is the sole observability provider — Application Insights not used.
     })
     .Build();
 
-// ── Create database schema on startup ────────────────────────────────────────
-// EnsureCreated lets EF Core use provider-correct types (SQL Server → uniqueidentifier/nvarchar,
-// SQLite → TEXT). Using Migrate() with the hand-written SQLite migration breaks SQL Server
-// because TEXT cannot be a primary key there.
-using (var scope = host.Services.CreateScope())
+// ── Create / migrate schema on startup ───────────────────────────────────────
+try
 {
+    using var scope = host.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<BirthRegistryDbContext>();
     db.Database.EnsureCreated();
+    try
+    {
+        db.GetInfrastructure()
+          .GetRequiredService<IRelationalDatabaseCreator>()
+          .CreateTables();
+    }
+    catch { /* tables already exist — safe to ignore */ }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[Startup] DB schema init failed (will retry on first request): {ex.Message}");
 }
 
 await host.RunAsync();
+
+// Flush any buffered logs before the process exits (important on Consumption plan)
+Log.CloseAndFlush();
