@@ -5,7 +5,6 @@
     "baseName":           { "value": "birthregistry" },
     "location":           { "value": "westeurope" },
     "sqlAdminLogin":      { "value": "brAdmin" },
-    "sqlAdminPassword":   { "value": "<STRONG_PASSWORD>" },
-    "datadogSite":        { "value": "datadoghq.com" }
+    "sqlAdminPassword":   { "value": "<STRONG_PASSWORD>" }
   }
 }
