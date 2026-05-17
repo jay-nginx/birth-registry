@@ -24,15 +24,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
-    <!-- Datadog APM — AzureFunctions package bundles the native CLR profiler -->
-    <PackageReference Include="Datadog.AzureFunctions" Version="2.57.0" />
-
     <!-- Logging -->
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
-    <!-- Datadog Log Ingestion — sends logs directly to Datadog HTTP intake, no agent/forwarder needed -->
-    <PackageReference Include="Serilog.Sinks.Datadog.Logs" Version="0.5.2" />
   </ItemGroup>
 
   <ItemGroup>

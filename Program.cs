@@ -10,13 +10,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Formatting.Compact;
-using Serilog.Sinks.Datadog.Logs;
-
-// Datadog: must be called BEFORE the host is built.
-// Initialises the CLR profiler compatibility layer for auto-instrumentation.
-// Wrapped in try/catch so a missing native profiler never crashes the app.
-try { Datadog.Serverless.CompatibilityLayer.Start(); }
-catch (Exception ex) { Console.WriteLine($"[Datadog] CompatibilityLayer.Start skipped: {ex.Message}"); }
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
@@ -40,41 +33,11 @@ var host = new HostBuilder()
         // ── Application services ──────────────────────────────────────────────
         services.AddScoped<IBirthRegistryService, BirthRegistryService>();
 
-        // ── Logging: Serilog → Console (stdout) + Datadog HTTP intake ────────
-        // The Datadog.Logs sink sends directly to https://http-intake.logs.datadoghq.com
-        // No agent, no Azure integration, no forwarder required.
-        var ddApiKey = config["DD_API_KEY"] ?? "";
-        var ddService = config["DD_SERVICE"] ?? "ociofunctionone";
-        var ddEnv     = config["DD_ENV"]     ?? "dev";
-        var ddVersion = config["DD_VERSION"] ?? "1.0.11";
-
-        // Url = host only — the sink prepends "https://" and appends "/api/v2/logs" internally
-        var ddConfig  = new DatadogConfiguration
-        {
-            Url    = "http-intake.logs.datadoghq.com",
-            Port   = 443,
-            UseSSL = true,
-            UseTCP = false
-        };
-
+        // ── Logging: Serilog → stdout (JSON) ─────────────────────────────────
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .Enrich.FromLogContext()
-            .Enrich.WithProperty("service", ddService)
-            .Enrich.WithProperty("env",     ddEnv)
-            .Enrich.WithProperty("version", ddVersion)
-            .Enrich.WithProperty("ddsource", "csharp")
-            // Keep stdout for Azure log stream / local dev
             .WriteTo.Console(new CompactJsonFormatter())
-            // Send directly to Datadog Logs HTTP intake — no agent needed
-            .WriteTo.DatadogLogs(
-                apiKey:  ddApiKey,
-                service: ddService,
-                source:  "csharp",
-                host:    Environment.MachineName,
-                tags:    new[] { $"env:{ddEnv}", $"version:{ddVersion}" },
-                configuration: ddConfig
-            )
             .CreateLogger();
 
         services.AddLogging(lb =>
@@ -106,5 +69,4 @@ catch (Exception ex)
 
 await host.RunAsync();
 
-// Flush any buffered logs before the process exits (important on Consumption plan)
 Log.CloseAndFlush();

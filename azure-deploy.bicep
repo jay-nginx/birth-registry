@@ -15,9 +15,6 @@ param sqlAdminLogin string
 @description('SQL Server admin password')
 param sqlAdminPassword string
 
-@description('Datadog site (e.g. datadoghq.com or datadoghq.eu)')
-param datadogSite string = 'datadoghq.com'
-
 // ── Storage account (required by Azure Functions) ────────────────────────────
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: take('br${uniqueString(resourceGroup().id)}', 24)
@@ -91,28 +88,6 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'FUNCTIONS_WORKER_RUNTIME',         value: 'dotnet-isolated' }
         { name: 'DatabaseProvider',                 value: 'SqlServer' }
         { name: 'ConnectionStrings__People',        value: 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDatabase.name};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;' }
-
-        // ── Datadog: core settings ────────────────────────────────────────────
-        { name: 'DD_API_KEY',                       value: '<YOUR_DATADOG_API_KEY>' }
-        { name: 'DD_SITE',                          value: datadogSite }
-        { name: 'DD_ENV',                           value: 'dev' }
-        { name: 'DD_SERVICE',                       value: 'ociofunctionone' }
-        { name: 'DD_VERSION',                       value: '1.0.11' }
-        { name: 'DD_LOGS_INJECTION',                value: 'true' }
-        { name: 'DD_RUNTIME_METRICS_ENABLED',       value: 'true' }
-        { name: 'DD_TRACE_SAMPLE_RATE',             value: '1.0' }
-
-        // ── Datadog: CLR auto-instrumentation (required for traces/spans) ────
-        // The Datadog.AzureFunctions NuGet package extracts the native profiler
-        // to /home/site/wwwroot/datadog at deploy time.
-        { name: 'CORECLR_ENABLE_PROFILING',         value: '1' }
-        { name: 'CORECLR_PROFILER',                 value: '{846F5F1C-F9AE-4B07-969E-05C26BC060D8}' }
-        { name: 'CORECLR_PROFILER_PATH',            value: '/home/site/wwwroot/datadog/linux-x64/Datadog.Trace.ClrProfiler.Native.so' }
-        { name: 'DD_DOTNET_TRACER_HOME',            value: '/home/site/wwwroot/datadog' }
-
-        // ── Datadog: log forwarding ───────────────────────────────────────────
-        // Logs flow stdout → Azure Log Stream → Datadog via the Azure integration.
-        // Configure the Datadog Azure integration at app.datadoghq.com > Integrations > Azure.
       ]
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
